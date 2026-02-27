@@ -19,15 +19,7 @@ The project explores how conversational quality can be enhanced through reward m
 - Demonstrate RLHF-style architecture principles
 
 🏗️ System Architecture
-User Input
-    ↓
-Base LLM Response
-    ↓
-Feedback Signal (Reward)
-    ↓
-Policy Update / Optimisation
-    ↓
-Improved Response Generation
+User Input -> Base LLM Response -> Feedback Signal (Reward) -> Policy Update / Optimisation -> Improved Response Generation
 
 🧠 Core Concepts
 
