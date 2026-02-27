@@ -1,0 +1,5 @@
+{
+  "name": "RL-Chat: Feedback-Driven LLM",
+  "description": "A chatbot that uses reinforcement learning principles by adapting its responses based on user feedback stored in a local database.",
+  "requestFramePermissions": []
+}
