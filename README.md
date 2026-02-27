@@ -1,20 +1,79 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+<img width="1638" height="1312" alt="image" src="https://github.com/user-attachments/assets/9274fdae-e3ac-4622-9958-dda15974e025" />
 
-# Run and deploy your AI Studio app
+🔍 Overview
 
-This contains everything you need to run your app locally.
+RL-Chat is a conversational AI system that integrates reinforcement learning principles to improve large language model (LLM) responses based on feedback signals.
 
-View your app in AI Studio: https://ai.studio/apps/d7a6ff81-afbd-4f70-8ea8-20ca7f3a646c
+The project explores how conversational quality can be enhanced through reward modelling, feedback loops and iterative policy optimisation. It demonstrates applied reinforcement learning concepts within a practical chatbot framework.
 
-## Run Locally
+🎯 Objectives
 
-**Prerequisites:**  Node.js
+- Build an interactive LLM-based chat system
+
+- Integrate feedback-driven optimisation
+
+- Simulate reinforcement learning from feedback
+
+- Improve response relevance and coherence over time
+
+- Demonstrate RLHF-style architecture principles
+
+🏗️ System Architecture
+User Input
+    ↓
+Base LLM Response
+    ↓
+Feedback Signal (Reward)
+    ↓
+Policy Update / Optimisation
+    ↓
+Improved Response Generation
+
+🧠 Core Concepts
+
+- Reinforcement Learning (RL)
+
+- Reward Modelling
+
+- Policy Optimisation
+
+- Feedback Loops
+
+- Human-in-the-Loop Learning
+
+- LLM Fine-Tuning Simulation
+
+⚙️ Implementation Highlights
+
+- Chat interface for real-time interaction
+
+- Feedback collection mechanism
+
+- Reward signal integration
+
+- Iterative response refinement
+
+- Modular training pipeline
+
+🛠️ Tech Stack
+
+- Python
+
+- PyTorch / TensorFlow
+
+- NumPy
+
+- Reinforcement Learning utilities
+
+📂 Repository Structure
+rl-chat-feedback-driven-llm/
+│
+├── data/                  # Feedback or training data
+├── models/                # Saved checkpoints
+├── src/                   # Core RL and chat logic
+├── notebooks/             # Experiments
+├── app/                   # Interface (if applicable)
+├── requirements.txt
+└── README.md
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
