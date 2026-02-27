@@ -65,15 +65,4 @@ Improved Response Generation
 
 - Reinforcement Learning utilities
 
-📂 Repository Structure
-rl-chat-feedback-driven-llm/
-│
-├── data/                  # Feedback or training data
-├── models/                # Saved checkpoints
-├── src/                   # Core RL and chat logic
-├── notebooks/             # Experiments
-├── app/                   # Interface (if applicable)
-├── requirements.txt
-└── README.md
-
 
