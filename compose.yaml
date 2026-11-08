@@ -1,0 +1,25 @@
+services:
+  rl-chat:
+    build: .
+    image: rl-chat:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_PATH: /data/rl-chat.db
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - rl_chat_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  rl_chat_data:
