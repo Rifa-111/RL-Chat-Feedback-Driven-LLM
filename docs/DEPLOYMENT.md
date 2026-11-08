@@ -1,67 +1,59 @@
-# Deployment and operations
+# Local deployment guide
 
-## Local development
-
-Install Node.js 22+, run `npm ci`, copy `.env.example` to `.env` and set `GEMINI_API_KEY`. Start with `npm run dev`. The React app and Express API are served on http://localhost:3000.
-
-The server stores SQLite in `DATABASE_PATH` (default `./data/rl-chat.db`). The directory is created at startup. Existing installations are upgraded with a `conversation_id` column; old rows are labelled `legacy`.
-
-## Docker
+## Docker Compose: no key required
 
 ```bash
-cp .env.example .env
-# Set GEMINI_API_KEY in .env; never commit this file.
 docker compose up --build -d
-docker compose ps
+docker compose logs -f ollama-init
 curl -f http://localhost:3000/readyz
 ```
 
-The image uses a multi-stage Node.js 22 build and runs as the non-root `node` user. SQLite data lives in a named volume. The root filesystem is read-only at runtime, with writable `/data` and temporary `/tmp`. The Compose port binds to loopback, rather than every network interface.
+The `ollama` service serves the model on the internal Compose network; `ollama-init` waits for it and downloads `qwen2.5:1.5b` into a named volume. RL-Chat starts after that download finishes. Access the UI at http://localhost:3000. The model download requires internet access once and sufficient local disk space. Chat generation itself is local, with no API charges.
+
+Use `docker compose logs -f ollama` to diagnose model issues. To stop: `docker compose down`. **Do not use `down -v` unless you intend to erase chat data and downloaded models.**
+
+To use another model, set `OLLAMA_MODEL` in a local `.env` file and run `docker compose up -d` again. For a smaller model try `qwen2.5:0.5b`; for a stronger one try `qwen2.5:3b` if your computer has enough memory. Check model availability in the [Ollama library](https://ollama.com/library).
+
+## Local Node.js development
+
+Install Node.js 22+ and Ollama. Run `ollama pull qwen2.5:1.5b`, start the Ollama server if it is not already running, then run `npm ci && npm run dev`. By default the backend connects to `http://127.0.0.1:11434`.
 
 ## Kubernetes (kind)
 
-Requires Docker, kubectl and [kind](https://kind.sigs.k8s.io/).
+Install Docker, kubectl and kind, then:
 
 ```bash
 kind create cluster --name rl-chat
 docker build -t rl-chat:local .
 kind load docker-image rl-chat:local --name rl-chat
-# Create a secret from the untracked .env file.
-kubectl create secret generic rl-chat-secrets --from-env-file=.env
 kubectl apply -f k8s/app.yaml
-kubectl rollout status deployment/rl-chat
+kubectl rollout status deployment/ollama --timeout=180s
+kubectl exec deployment/ollama -- ollama pull qwen2.5:1.5b
+kubectl rollout status deployment/rl-chat --timeout=180s
 kubectl port-forward service/rl-chat 3000:80
 ```
 
-Open http://localhost:3000 in a separate browser. The manifest references `rl-chat:local`; **that image must be loaded into each cluster node** or replaced with an image hosted in a registry accessible to the cluster. No image is automatically published by CI.
+Visit http://localhost:3000. The model must be pulled explicitly in Kubernetes; the `ollama` pod does not automatically download it. No Gemini secret is needed.
 
-For an actual cluster, provision a compatible default StorageClass or modify `k8s/app.yaml`. A 1 GiB PVC stores SQLite state. The deployment uses one replica with `Recreate` to avoid concurrent processes writing to the same SQLite database. It includes startup/readiness/liveness probes, resource limits, non-root execution, restricted Linux capabilities and a read-only root filesystem.
+The manifest provisions a 5 GiB model PVC and a 1 GiB SQLite PVC. It requests 2 GiB RAM for Ollama and limits it to 4 GiB. Ensure your Kubernetes node has adequate available resources. Both services are single-replica; the SQLite deployment uses `Recreate` updates. A compatible StorageClass is required for the PVCs.
 
-### Diagnostics
+## Optional Gemini
+
+Copy `.env.example` to `.env`, set `LLM_PROVIDER=gemini` and a new private `GEMINI_API_KEY`. The backend uses the key, not the browser. In Docker Compose, Gemini mode still starts the Ollama services; they are harmless but unnecessary for that mode.
+
+## Health and diagnostics
 
 ```bash
-kubectl get pods,pvc,service
-kubectl describe pod -l app=rl-chat
+curl http://localhost:3000/healthz
+curl http://localhost:3000/readyz
+docker compose ps
+kubectl get pods,pvc,svc
 kubectl logs deployment/rl-chat
-kubectl get events --sort-by=.lastTimestamp
+kubectl logs deployment/ollama
 ```
 
-If the PVC is Pending, check your cluster's StorageClass. If `ImagePullBackOff` appears in kind, rerun `kind load docker-image`. A missing `rl-chat-secrets` secret prevents the pod from starting. The `/readyz` endpoint validates SQLite access; it intentionally does not consume Gemini API tokens.
+`/readyz` checks the SQLite database, not model readiness. A missing Ollama model or an unavailable provider returns a chat error rather than marking the web server unhealthy.
 
-## API example
+## Safety and limitations
 
-```bash
-curl -s http://localhost:3000/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"conversationId":"550e8400-e29b-41d4-a716-446655440000","messages":[{"role":"user","content":"What is feedback-conditioned prompting?"}]}'
-```
-
-Successful replies contain a response `id` and `content`. Rate the response by POSTing `{"conversationId":"...","messageId":123,"rating":1}` to `/api/feedback`; only one rating is accepted per response. `/api/stats` requires the conversation UUID.
-
-## Security, privacy and scaling
-
-Gemini requests are made by Express, not browser code. Secrets are provided through environment variables or a Kubernetes Secret, never hardcoded in repository files. Nevertheless, **the app has no real user authentication**, so conversation IDs must not be treated as access-control credentials. Avoid exposing the demo to untrusted users or using sensitive data.
-
-Feedback examples are limited to the requesting conversation, capped at five, and treated as untrusted sample content in the model instruction. The project does not actually optimise a reward model or update model weights.
-
-For multiple replicas or production traffic, replace SQLite with a network database, implement authenticated user/session access controls, add API rate limiting and resource governance, use managed secret storage, add logging and metrics that do not expose prompts and establish retention/deletion policies. Do not scale replicas beyond one while using the supplied SQLite PVC.
+This is a development demo. It does not authenticate users; conversation IDs are not authorisation. Avoid sensitive prompts. Before hosting it publicly, add authentication, request limits, data retention/deletion, secure transport and a production database. Ollama runs locally and does not require a paid API, but it consumes your machine's RAM, CPU/GPU resources and electricity.

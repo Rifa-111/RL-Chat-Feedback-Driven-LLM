@@ -1,90 +1,92 @@
 # RL-Chat — Feedback-Guided LLM
 
-A React and TypeScript conversational AI application with an Express API, Gemini model integration and a SQLite-backed human-feedback loop. It demonstrates **feedback-conditioned prompting**: positively rated answers become bounded few-shot examples for future responses in the same conversation.
+A React + TypeScript chat application with an Express API, SQLite feedback storage and a **free local LLM powered by Ollama**. Gemini remains an optional alternative. Docker Compose and Kubernetes configurations are included.
 
-> **Research scope:** This project does not perform RLHF, reward-model training, policy-gradient optimisation or LLM fine-tuning. The feedback mechanism influences future prompts, not the model's weights.
+> **Scope:** Ratings condition future prompts by retrieving positively rated examples. This is not RLHF training, reward-model optimisation or LLM fine-tuning.
 
-## Capabilities
+## Start free with Docker
 
-- Interactive chat UI with Markdown responses and thumbs-up/down ratings
-- Server-side Gemini calls; the API key is **never embedded into the Vite browser bundle**
-- Conversation-scoped SQLite messages, ratings and positive-example retrieval
-- Validation for message payloads and feedback ownership
-- Health and readiness endpoints, automated tests and GitHub Actions CI
-- Multi-stage Docker image, local Docker Compose setup and single-replica Kubernetes manifests
+Install Docker Desktop (or Docker Engine with Compose), then:
+
+```bash
+git clone https://github.com/Rifa-111/RL-Chat-Feedback-Driven-LLM.git
+cd RL-Chat-Feedback-Driven-LLM
+docker compose up --build -d
+docker compose logs -f ollama-init
+```
+
+Once the model download finishes, open **http://localhost:3000**. The first download requires internet access and enough free disk space. Later chats run on your computer without per-request API charges. The default `qwen2.5:1.5b` model is a lightweight CPU-friendly starting point; performance depends on your hardware.
+
+No `.env` file or API key is required for Docker Compose's default Ollama mode. The model is pulled automatically into a persistent volume by `ollama-init`.
+
+## Development without Docker
+
+Install Node.js 22+ and [Ollama](https://ollama.com/), then run:
+
+```bash
+ollama pull qwen2.5:1.5b
+ollama serve
+```
+
+In another terminal:
+
+```bash
+npm ci
+npm run dev
+```
+
+Ollama's desktop app may already be running its server; if so, you do not need to run `ollama serve` again.
+
+## Optional Gemini mode
+
+Gemini is **not required**. To use it, create a local `.env` file from `.env.example`, set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY`, then restart the application. Never commit API keys or expose them in client-side code.
 
 ## Architecture
 
 ```text
-Browser (React / Vite)
-      │  /api/chat, /api/feedback, /api/stats
-      ▼
-Express API (Node.js)
-      ├── Gemini API (server-side API key)
-      └── SQLite (messages, feedback, prior positive examples)
-                   │
-                   └── Selected examples → next model prompt
+React browser → Express /api/chat
+                     ├── Ollama (default, local, no API key)
+                     ├── Gemini (optional, server-side API key)
+                     └── SQLite → feedback and positively rated examples
 ```
 
-A random conversation identifier stored in the browser is used to scope demo data. It is **not authentication**; do not deploy this publicly for untrusted users without login, access controls, rate limiting and privacy safeguards.
+The backend validates requests and retrieves up to five positively rated examples from the current conversation. The chat interface shows feedback statistics and supports positive/negative ratings. A browser-generated conversation ID is **not authentication**.
 
-## Run locally
+## Docker and Kubernetes
 
-Requires Node.js 22 or newer and access to the Gemini API.
+- [Dockerfile](Dockerfile): multi-stage Node.js build with non-root execution
+- [compose.yaml](compose.yaml): RL-Chat + Ollama + one-time model download
+- [k8s/app.yaml](k8s/app.yaml): single-replica RL-Chat and Ollama, services and persistent volumes
+- [Deployment guide](docs/DEPLOYMENT.md): step-by-step local setup and troubleshooting
+- [Security policy](SECURITY.md): deployment limitations
+
+Kubernetes requires enough CPU/RAM and storage for the Ollama model. The supplied setup is a local demonstrator, not a highly available production deployment.
+
+## Checks
 
 ```bash
 npm ci
-cp .env.example .env
-# Edit .env and set GEMINI_API_KEY to your real key.
-npm run dev
-```
-
-Open http://localhost:3000. The backend loads `.env` using dotenv.
-
-## Docker Compose
-
-```bash
-cp .env.example .env
-# Edit .env to set GEMINI_API_KEY.
-docker compose up --build -d
-curl http://localhost:3000/readyz
-```
-
-The Compose service binds only to `127.0.0.1:3000` and keeps its SQLite database in a named Docker volume. Stop it with `docker compose down`. Use `docker compose down -v` **only if you intend to delete all persisted feedback and chat data**.
-
-## Kubernetes
-
-See [the deployment guide](docs/DEPLOYMENT.md) for a local kind cluster, image loading, secret creation, persistent storage, probes, resource limits and troubleshooting. The manifest deliberately uses **one replica** and a `Recreate` strategy because SQLite on a single ReadWriteOnce volume is not a multi-replica database.
-
-## Development and checks
-
-```bash
 npm run lint
 npm test
 npm run build
 docker build -t rl-chat:local .
 ```
 
-The CI workflow checks TypeScript, tests, frontend/server builds and Docker image construction.
+GitHub Actions validates the code, builds the container and smoke-tests readiness.
 
 ## API
 
-| Endpoint | Purpose |
+| Endpoint | Description |
 | --- | --- |
 | `GET /healthz` | Process liveness |
 | `GET /readyz` | SQLite readiness |
-| `POST /api/chat` | Generate and persist one assistant response |
-| `POST /api/feedback` | Record a positive or negative rating once |
-| `GET /api/stats?conversationId=<uuid>` | Feedback counts within a conversation |
+| `POST /api/chat` | Generate a reply with the configured LLM |
+| `POST /api/feedback` | Record a rating for a response |
+| `GET /api/stats?conversationId=<uuid>` | Conversation feedback statistics |
 
-`POST /api/chat` accepts a UUID `conversationId` and a `messages` array of `{role,content}` turns, ending with a user turn. Example requests and deployment considerations are in [the deployment guide](docs/DEPLOYMENT.md).
+## Limitations
 
-## Limitations and responsible use
-
-- SQLite is single-node storage; the Kubernetes example is **not horizontally scalable** or highly available.
-- Session IDs protect against accidental cross-conversation mixing but are not an authorisation mechanism.
-- The demo persists prompts and responses locally; avoid sensitive personal, confidential or financial data.
-- The project does not quantify a training-related improvement or claim reinforced model learning.
-- A deployment exposed to the internet needs authentication, abuse prevention, monitoring, network security, secret management and a privacy/retention policy.
-
-The project is an experimental engineering demonstrator, not a production service.
+- The application has no authentication or rate limiting. Do not expose it publicly to untrusted users.
+- SQLite and the included Kubernetes deployment are single-replica and not horizontally scalable.
+- The application stores prompts, model responses and ratings locally. Avoid sensitive data.
+- The project demonstrates **feedback-conditioned prompting**, not weight updates or reinforcement learning training.
