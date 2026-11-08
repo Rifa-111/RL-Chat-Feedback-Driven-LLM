@@ -1,60 +1,90 @@
-<img width="1638" height="1312" alt="image" src="https://github.com/user-attachments/assets/9274fdae-e3ac-4622-9958-dda15974e025" />
+# RL-Chat — Feedback-Guided LLM
 
-🔍 Overview
+A React and TypeScript conversational AI application with an Express API, Gemini model integration and a SQLite-backed human-feedback loop. It demonstrates **feedback-conditioned prompting**: positively rated answers become bounded few-shot examples for future responses in the same conversation.
 
-RL-Chat is a conversational AI system that integrates reinforcement learning principles to improve large language model (LLM) responses based on feedback signals.
+> **Research scope:** This project does not perform RLHF, reward-model training, policy-gradient optimisation or LLM fine-tuning. The feedback mechanism influences future prompts, not the model's weights.
 
-The project explores how conversational quality can be enhanced through reward modelling, feedback loops and iterative policy optimisation. It demonstrates applied reinforcement learning concepts within a practical chatbot framework.
+## Capabilities
 
-🎯 Objectives
+- Interactive chat UI with Markdown responses and thumbs-up/down ratings
+- Server-side Gemini calls; the API key is **never embedded into the Vite browser bundle**
+- Conversation-scoped SQLite messages, ratings and positive-example retrieval
+- Validation for message payloads and feedback ownership
+- Health and readiness endpoints, automated tests and GitHub Actions CI
+- Multi-stage Docker image, local Docker Compose setup and single-replica Kubernetes manifests
 
-- Build an interactive LLM-based chat system
+## Architecture
 
-- Integrate feedback-driven optimisation
+```text
+Browser (React / Vite)
+      │  /api/chat, /api/feedback, /api/stats
+      ▼
+Express API (Node.js)
+      ├── Gemini API (server-side API key)
+      └── SQLite (messages, feedback, prior positive examples)
+                   │
+                   └── Selected examples → next model prompt
+```
 
-- Simulate reinforcement learning from feedback
+A random conversation identifier stored in the browser is used to scope demo data. It is **not authentication**; do not deploy this publicly for untrusted users without login, access controls, rate limiting and privacy safeguards.
 
-- Improve response relevance and coherence over time
+## Run locally
 
-- Demonstrate RLHF-style architecture principles
+Requires Node.js 22 or newer and access to the Gemini API.
 
-🏗️ System Architecture
-User Input -> Base LLM Response -> Feedback Signal (Reward) -> Policy Update / Optimisation -> Improved Response Generation
+```bash
+npm ci
+cp .env.example .env
+# Edit .env and set GEMINI_API_KEY to your real key.
+npm run dev
+```
 
-🧠 Core Concepts
+Open http://localhost:3000. The backend loads `.env` using dotenv.
 
-- Reinforcement Learning (RL)
+## Docker Compose
 
-- Reward Modelling
+```bash
+cp .env.example .env
+# Edit .env to set GEMINI_API_KEY.
+docker compose up --build -d
+curl http://localhost:3000/readyz
+```
 
-- Policy Optimisation
+The Compose service binds only to `127.0.0.1:3000` and keeps its SQLite database in a named Docker volume. Stop it with `docker compose down`. Use `docker compose down -v` **only if you intend to delete all persisted feedback and chat data**.
 
-- Feedback Loops
+## Kubernetes
 
-- Human-in-the-Loop Learning
+See [the deployment guide](docs/DEPLOYMENT.md) for a local kind cluster, image loading, secret creation, persistent storage, probes, resource limits and troubleshooting. The manifest deliberately uses **one replica** and a `Recreate` strategy because SQLite on a single ReadWriteOnce volume is not a multi-replica database.
 
-- LLM Fine-Tuning Simulation
+## Development and checks
 
-⚙️ Implementation Highlights
+```bash
+npm run lint
+npm test
+npm run build
+docker build -t rl-chat:local .
+```
 
-- Chat interface for real-time interaction
+The CI workflow checks TypeScript, tests, frontend/server builds and Docker image construction.
 
-- Feedback collection mechanism
+## API
 
-- Reward signal integration
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /healthz` | Process liveness |
+| `GET /readyz` | SQLite readiness |
+| `POST /api/chat` | Generate and persist one assistant response |
+| `POST /api/feedback` | Record a positive or negative rating once |
+| `GET /api/stats?conversationId=<uuid>` | Feedback counts within a conversation |
 
-- Iterative response refinement
+`POST /api/chat` accepts a UUID `conversationId` and a `messages` array of `{role,content}` turns, ending with a user turn. Example requests and deployment considerations are in [the deployment guide](docs/DEPLOYMENT.md).
 
-- Modular training pipeline
+## Limitations and responsible use
 
-🛠️ Tech Stack
+- SQLite is single-node storage; the Kubernetes example is **not horizontally scalable** or highly available.
+- Session IDs protect against accidental cross-conversation mixing but are not an authorisation mechanism.
+- The demo persists prompts and responses locally; avoid sensitive personal, confidential or financial data.
+- The project does not quantify a training-related improvement or claim reinforced model learning.
+- A deployment exposed to the internet needs authentication, abuse prevention, monitoring, network security, secret management and a privacy/retention policy.
 
-- Python
-
-- PyTorch / TensorFlow
-
-- NumPy
-
-- Reinforcement Learning utilities
-
-
+The project is an experimental engineering demonstrator, not a production service.

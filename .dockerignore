@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+dist
+dist-server
+data
+coverage
+.env*
+*.db
+*.db-shm
+*.db-wal
+*.log
+.DS_Store
