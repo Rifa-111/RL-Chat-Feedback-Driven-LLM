@@ -22,6 +22,13 @@ function cn(...inputs: ClassValue[]) {
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<string>(() => {
+    const saved = localStorage.getItem("rl-chat-conversation");
+    if (saved && /^[0-9a-f-]{36}$/i.test(saved)) return saved;
+    const created = crypto.randomUUID();
+    localStorage.setItem("rl-chat-conversation", created);
+    return created;
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState({ totalResponses: 0, positive: 0, negative: 0 });
@@ -30,7 +37,7 @@ export default function App() {
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [conversationId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -40,7 +47,7 @@ export default function App() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/stats');
+      const res = await fetch(`/api/stats?conversationId=${encodeURIComponent(conversationId)}`);
       const data = await res.json();
       setStats(data);
     } catch (err) {
@@ -58,36 +65,13 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // Save user message to DB
-      const userRes = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userMsg)
-      });
-      const { id: userId } = await userRes.json();
-
-      // Get best examples for "RL" context
-      const examplesRes = await fetch('/api/best-examples');
-      const examples = await examplesRes.json();
-
-      // Get AI response
-      const aiResponse = await getChatResponse([...messages, userMsg], examples);
-      
-      const modelMsg: ChatMessage = { role: 'model', content: aiResponse };
-      
-      // Save model message to DB
-      const modelRes = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(modelMsg)
-      });
-      const { id: modelId } = await modelRes.json();
-      
-      setMessages(prev => [...prev, { ...modelMsg, id: modelId }]);
+      // The backend securely handles Gemini generation and message persistence.
+      const response = await getChatResponse([...messages, userMsg], conversationId);
+      setMessages(prev => [...prev, { role: 'model', content: response.content, id: response.id }]);
       fetchStats();
     } catch (err) {
       console.error('Chat error:', err);
-      setMessages(prev => [...prev, { role: 'model', content: "Sorry, I encountered an error. Please check your API key." }]);
+      setMessages(prev => [...prev, { role: 'model', content: "Sorry, the response could not be generated. Please try again." }]);
     } finally {
       setIsLoading(false);
     }
@@ -95,11 +79,12 @@ export default function App() {
 
   const handleFeedback = async (messageId: number, rating: number) => {
     try {
-      await fetch('/api/feedback', {
+      const response = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageId, rating })
+        body: JSON.stringify({ conversationId, messageId, rating })
       });
+      if (!response.ok) throw new Error("Feedback could not be saved");
       
       setMessages(prev => prev.map(m => 
         m.id === messageId ? { ...m, feedback: rating } : m
@@ -131,12 +116,18 @@ export default function App() {
           <button 
             onClick={() => setShowStats(!showStats)}
             className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
-            title="Training Stats"
+            title="Feedback statistics"
           >
             <BarChart3 size={20} />
           </button>
           <button 
-            onClick={() => setMessages([])}
+            onClick={() => {
+              const nextId = crypto.randomUUID();
+              localStorage.setItem("rl-chat-conversation", nextId);
+              setConversationId(nextId);
+              setMessages([]);
+              setStats({ totalResponses: 0, positive: 0, negative: 0 });
+            }}
             className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
             title="Clear Chat"
           >
@@ -155,7 +146,7 @@ export default function App() {
             className="absolute top-20 right-6 z-20 w-64 bg-white border border-zinc-200 rounded-2xl shadow-xl p-4"
           >
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <BarChart3 size={16} /> Training Progress
+              <BarChart3 size={16} /> Feedback overview
             </h3>
             <div className="space-y-3">
               <div className="flex justify-between text-xs">
@@ -196,7 +187,7 @@ export default function App() {
             <Bot size={48} className="text-zinc-300" />
             <div>
               <p className="text-zinc-500 font-medium">No messages yet</p>
-              <p className="text-xs text-zinc-400">Start a conversation to begin the RL training loop</p>
+              <p className="text-xs text-zinc-400">Start a conversation to explore feedback-guided responses</p>
             </div>
           </div>
         )}
@@ -308,7 +299,7 @@ export default function App() {
           </button>
         </form>
         <p className="mt-3 text-[10px] text-center text-zinc-400 font-medium">
-          RL-Chat uses a feedback loop to refine its responses. Your ratings directly influence future generations.
+          Ratings provide examples for future prompts in this conversation; this demo does not retrain LLM weights.
         </p>
       </footer>
     </div>
