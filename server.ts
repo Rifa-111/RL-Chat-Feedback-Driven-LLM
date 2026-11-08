@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import { GoogleGenAI } from "@google/genai";
+import { generateReply } from "./server/providers.js";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
@@ -75,11 +75,6 @@ app.post("/api/chat", async (req, res) => {
     res.status(400).json({ error: "Valid conversationId and chat messages are required" });
     return;
   }
-  if (!process.env.GEMINI_API_KEY) {
-    res.status(503).json({ error: "The server has no configured Gemini API key" });
-    return;
-  }
-
   const examples = db.prepare(`
     SELECT u.content AS prompt, m.content AS response
     FROM feedback f
@@ -94,16 +89,7 @@ app.post("/api/chat", async (req, res) => {
   `).all(conversationId) as Array<{prompt: string; response: string}>;
 
   try {
-    const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const reply = await client.models.generateContent({
-      model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
-      contents: (messages as ChatTurn[]).map((message) => ({
-        role: message.role,
-        parts: [{ text: message.content }],
-      })),
-      config: { systemInstruction: buildSystemInstruction(examples), temperature: 0.7 },
-    });
-    const content = reply.text?.trim();
+    const content = await generateReply(messages as ChatTurn[], buildSystemInstruction(examples));
     if (!content) {
       res.status(502).json({ error: "The model returned an empty response" });
       return;
@@ -115,9 +101,9 @@ app.post("/api/chat", async (req, res) => {
       return Number(result.lastInsertRowid);
     })();
     res.json({ id: messageId, content });
-  } catch {
-    console.error("Model generation failed");
-    res.status(502).json({ error: "Unable to generate a response right now" });
+  } catch (error) {
+    console.error("Model generation failed", error instanceof Error ? error.message : "Unknown error");
+    res.status(502).json({ error: "Unable to generate a response. Check that your selected model provider is running and the model is installed." });
   }
 });
 

@@ -3,12 +3,18 @@ services:
     build: .
     image: rl-chat:local
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       NODE_ENV: production
       PORT: "3000"
       DATABASE_PATH: /data/rl-chat.db
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -21,5 +27,31 @@ services:
     cap_drop:
       - ALL
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    expose:
+      - "11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$$OLLAMA_MODEL\""]
+    restart: "no"
+
 volumes:
   rl_chat_data:
+  ollama_models:

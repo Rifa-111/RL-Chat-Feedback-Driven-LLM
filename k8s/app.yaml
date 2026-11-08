@@ -49,13 +49,12 @@ spec:
               value: "3000"
             - name: DATABASE_PATH
               value: /data/rl-chat.db
-            - name: GEMINI_MODEL
-              value: gemini-3-flash-preview
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rl-chat-secrets
-                  key: GEMINI_API_KEY
+            - name: LLM_PROVIDER
+              value: ollama
+            - name: OLLAMA_BASE_URL
+              value: http://ollama:11434
+            - name: OLLAMA_MODEL
+              value: qwen2.5:1.5b
           startupProbe:
             httpGet:
               path: /readyz
@@ -109,4 +108,74 @@ spec:
   ports:
     - name: http
       port: 80
+      targetPort: http
+---
+# Local Ollama model runtime. Run "kubectl exec deployment/ollama -- ollama pull qwen2.5:1.5b"
+# after applying the manifests and before chatting.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - name: http
+              containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: 0.0.0.0:11434
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+spec:
+  type: ClusterIP
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
       targetPort: http
