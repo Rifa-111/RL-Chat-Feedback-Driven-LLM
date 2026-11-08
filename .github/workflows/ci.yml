@@ -19,3 +19,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: docker build -t rl-chat:ci .
+      - name: Smoke-test container readiness
+        run: |
+          docker run -d --name rl-chat-smoke -p 127.0.0.1:3000:3000 -e GEMINI_API_KEY=test-placeholder rl-chat:ci
+          trap 'docker logs rl-chat-smoke; docker rm -f rl-chat-smoke' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:3000/readyz; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:3000/readyz
+          status=$(curl --silent -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3000/api/chat)
+          test "$status" = "400"
